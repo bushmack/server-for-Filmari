@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  kinopoisk-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./:/app
+    restart: unless-stopped
