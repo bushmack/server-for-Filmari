@@ -26,15 +26,15 @@ def get_random_series():
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
             "description": f.get("description") or "Описание отсутствует",
-            "posterUrl": f.get("posterUrlPreview") or None,
+            "posterUrl": f.get("posterUrlPreview") or "",
             "year": f.get("year"),
             "genre": f.get("genres")[0]["genre"] if f.get("genres") else None,
             "rating": f.get("rating")
         }
         for f in data["films"]
         if f["type"] == "TV_SERIES"
-           and f.get("posterUrlPreview")  # Проверка на наличие постера
-           and f.get("description")       # Проверка на наличие описания
+           and f.get("posterUrlPreview")
+           and f.get("description")
     ][:5]
 
 def get_random_movie():
@@ -54,7 +54,7 @@ def get_random_movie():
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
             "description": f.get("description") or "Описание отсутствует",
-            "posterUrl": f.get("posterUrlPreview") or None,
+            "posterUrl": f.get("posterUrlPreview") or "",
             "year": f.get("year"),
             "genre": f.get("genres")[0]["genre"] if f.get("genres") else None,
             "rating": f.get("rating")
@@ -79,7 +79,7 @@ def search_by_genre_and_year(genre: str, year: int):
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
             "description": f.get("description") or "Описание отсутствует",
-            "posterUrl": f.get("posterUrlPreview") or None,
+            "posterUrl": f.get("posterUrlPreview") or "",
             "year": f.get("year"),
             "genre": genre,
             "rating": f.get("rating")
@@ -101,7 +101,7 @@ def search_by_title(title: str):
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
             "description": f.get("description") or "Описание отсутствует",
-            "posterUrl": f.get("posterUrlPreview") or None,
+            "posterUrl": f.get("posterUrlPreview") or "",
             "year": f.get("year"),
             "genre": f.get("genres")[0]["genre"] if f.get("genres") else None,
             "rating": f.get("rating")
@@ -132,7 +132,7 @@ def search_by_actor(actor_name: str):
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
             "description": f.get("description") or "Описание отсутствует",
-            "posterUrl": f.get("posterUrlPreview") or None,
+            "posterUrl": f.get("posterUrlPreview") or "",
             "year": f.get("year"),
             "genre": f.get("genres")[0]["genre"] if f.get("genres") else None,
             "rating": f.get("rating")
