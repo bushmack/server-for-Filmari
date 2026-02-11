@@ -6,12 +6,12 @@ from database import init_db, add_film_to_collection, get_user_collections
 from kinopoisk_api import (
     get_random_series,
     get_random_movie,
-    search_films_by_genre_and_year,
-    search_films_by_title,
-    search_films_by_actor
+    search_by_genre_and_year,
+    search_by_title,
+    search_by_actor
 )
 
-app = FastAPI(title="Film API Server")
+app = FastAPI(title="Full Film API Server")
 
 init_db()
 
@@ -22,40 +22,35 @@ async def root():
 @app.get("/api/random-series", response_model=List[Film])
 async def api_get_random_series():
     try:
-        series = get_random_series()
-        return series
+        return get_random_series()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/random-movie", response_model=List[Film])
 async def api_get_random_movie():
     try:
-        movies = get_random_movie()
-        return movies
+        return get_random_movie()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/search-by-genre-year", response_model=List[Film])
 async def api_search_by_genre_year(genre: str, year: int):
     try:
-        films = search_films_by_genre_and_year(genre, year)
-        return films
+        return search_by_genre_and_year(genre, year)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/search-by-title", response_model=List[Film])
 async def api_search_by_title(title: str = Query(..., min_length=1)):
     try:
-        films = search_films_by_title(title)
-        return films
+        return search_by_title(title)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/search-by-actor", response_model=List[Film])
 async def api_search_by_actor(actor: str = Query(..., min_length=1)):
     try:
-        films = search_films_by_actor(actor)
-        return films
+        return search_by_actor(actor)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -68,9 +63,8 @@ async def api_add_to_collection(user_id: str, film_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/user-collections/{user_id}", response_model=List[int])
-async def api_get_user_collections(user_id: str):
+async def api_get_user_collections_endpoint(user_id: str):
     try:
-        film_ids = get_user_collections(user_id)
-        return film_ids
+        return get_user_collections(user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
