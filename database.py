@@ -1,6 +1,8 @@
 import sqlite3
+import os
 
-DB_PATH = "collections.db"
+# Используем /tmp для базы — всегда доступно для записи
+DB_PATH = "/tmp/collections.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
