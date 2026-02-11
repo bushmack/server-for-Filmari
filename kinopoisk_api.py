@@ -26,13 +26,15 @@ def get_random_series():
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
             "description": f.get("description") or "Описание отсутствует",
-            "posterUrl": f.get("posterUrlPreview") or "",
+            "posterUrl": f.get("posterUrlPreview") or None,
             "year": f.get("year"),
             "genre": f.get("genres")[0]["genre"] if f.get("genres") else None,
             "rating": f.get("rating")
         }
         for f in data["films"]
         if f["type"] == "TV_SERIES"
+           and f.get("posterUrlPreview")  # Проверка на наличие постера
+           and f.get("description")       # Проверка на наличие описания
     ][:5]
 
 def get_random_movie():
@@ -52,13 +54,15 @@ def get_random_movie():
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
             "description": f.get("description") or "Описание отсутствует",
-            "posterUrl": f.get("posterUrlPreview") or "",
+            "posterUrl": f.get("posterUrlPreview") or None,
             "year": f.get("year"),
             "genre": f.get("genres")[0]["genre"] if f.get("genres") else None,
             "rating": f.get("rating")
         }
         for f in data["films"]
         if f["type"] == "FILM"
+           and f.get("posterUrlPreview")
+           and f.get("description")
     ][:5]
 
 def search_by_genre_and_year(genre: str, year: int):
@@ -75,12 +79,14 @@ def search_by_genre_and_year(genre: str, year: int):
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
             "description": f.get("description") or "Описание отсутствует",
-            "posterUrl": f.get("posterUrlPreview") or "",
+            "posterUrl": f.get("posterUrlPreview") or None,
             "year": f.get("year"),
             "genre": genre,
             "rating": f.get("rating")
         }
         for f in data["films"]
+        if f.get("posterUrlPreview")
+           and f.get("description")
     ]
 
 def search_by_title(title: str):
@@ -95,12 +101,14 @@ def search_by_title(title: str):
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
             "description": f.get("description") or "Описание отсутствует",
-            "posterUrl": f.get("posterUrlPreview") or "",
+            "posterUrl": f.get("posterUrlPreview") or None,
             "year": f.get("year"),
             "genre": f.get("genres")[0]["genre"] if f.get("genres") else None,
             "rating": f.get("rating")
         }
         for f in data["films"]
+        if f.get("posterUrlPreview")
+           and f.get("description")
     ]
 
 def search_by_actor(actor_name: str):
@@ -108,23 +116,28 @@ def search_by_actor(actor_name: str):
     response = requests.get(f"https://kinopoiskapiunofficial.tech/api/v1/staff?filmId=0&name={actor_name}", headers=headers)
     if response.status_code != 200:
         raise Exception(f"Actor API error {response.status_code}")
+
     staff_data = response.json()
     if not staff_data:
         return []
+
     person_id = staff_data[0]["staffId"]
     film_response = requests.get(f"https://kinopoiskapiunofficial.tech/api/v1/staff/{person_id}/films", headers=headers)
     if film_response.status_code != 200:
         raise Exception(f"Film API error {film_response.status_code}")
+
     films = film_response.json()
     return [
         {
             "id": f["filmId"],
             "name": f.get("nameRu") or f.get("nameEn") or "Без названия",
-            "description": "",
-            "posterUrl": "",
+            "description": f.get("description") or "Описание отсутствует",
+            "posterUrl": f.get("posterUrlPreview") or None,
             "year": f.get("year"),
-            "genre": "",
+            "genre": f.get("genres")[0]["genre"] if f.get("genres") else None,
             "rating": f.get("rating")
         }
         for f in films
+        if f.get("posterUrlPreview")
+           and f.get("description")
     ]
