@@ -1,56 +1,76 @@
-import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
+from models import Film, UserCollection
+from database import init_db, add_film_to_collection, get_user_collections
+from kinopoisk_api import (
+    get_random_series,
+    get_random_movie,
+    search_films_by_genre_and_year,
+    search_films_by_title,
+    search_films_by_actor
+)
 
-app = FastAPI(title="Simple Kinopoisk API")
+app = FastAPI(title="Film API Server")
 
-KINOPOISK_API_KEY = "H974FM6-0V3M4CP-HNA5Q7V-ARMKP1B"
-
-class Series(BaseModel):
-    id: int
-    name: str
-    description: str
-    posterUrl: str
+init_db()
 
 @app.get("/")
 async def root():
-    return {"message": "Simple Kinopoisk API", "status": "running"}
+    return {"message": "Film API Server", "status": "running"}
 
-@app.get("/api/random-series", response_model=List[Series])
-async def get_random_series():
-    headers = {"X-API-KEY": KINOPOISK_API_KEY}
-    params = {
-        "field": "type",
-        "value": "TV_SERIES",
-        "ratingFrom": 0,
-        "ratingTo": 10,
-        "yearFrom": 1950,
-        "yearTo": 2026,
-        "isSerial": True,
-        "page": 1
-    }
+@app.get("/api/random-series", response_model=List[Film])
+async def api_get_random_series():
     try:
-        response = requests.get("https://kinopoiskapiunofficial.tech/api/v2.2/films", headers=headers, params=params)
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Ошибка API Кинопоиска")
-
-        data = response.json()
-        series_list = [
-            {
-                "id": film["filmId"],
-                "name": film.get("nameRu") or film.get("nameEn") or "Без названия",
-                "description": film.get("description") or "Описание отсутствует",
-                "posterUrl": film.get("posterUrlPreview") or ""
-            }
-            for film in data["films"]
-            if film["type"] == "TV_SERIES"
-        ][:5]
-
-        return series_list
+        series = get_random_series()
+        return series
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/api/random-movie", response_model=List[Film])
+async def api_get_random_movie():
+    try:
+        movies = get_random_movie()
+        return movies
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/search-by-genre-year", response_model=List[Film])
+async def api_search_by_genre_year(genre: str, year: int):
+    try:
+        films = search_films_by_genre_and_year(genre, year)
+        return films
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/search-by-title", response_model=List[Film])
+async def api_search_by_title(title: str = Query(..., min_length=1)):
+    try:
+        films = search_films_by_title(title)
+        return films
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/search-by-actor", response_model=List[Film])
+async def api_search_by_actor(actor: str = Query(..., min_length=1)):
+    try:
+        films = search_films_by_actor(actor)
+        return films
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/add-to-collection")
+async def api_add_to_collection(user_id: str, film_id: int):
+    try:
+        add_film_to_collection(user_id, film_id)
+        return {"message": "Фильм добавлен в подборку"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/user-collections/{user_id}", response_model=List[int])
+async def api_get_user_collections(user_id: str):
+    try:
+        film_ids = get_user_collections(user_id)
+        return film_ids
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
