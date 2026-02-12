@@ -1,7 +1,8 @@
 import sqlite3
 from contextlib import contextmanager
 
-DB_PATH = "/tmp/film_app.db"
+# Используем постоянное место для базы данных
+DB_PATH = "/app/data/film_app.db"
 
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:

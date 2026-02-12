@@ -1,11 +1,15 @@
 version: '3.8'
-
 services:
   api:
     build: .
     container_name: server-for-filmari
     ports:
       - "8888:8000"
+    environment:
+      - KINOPOISK_API_KEY=${KINOPOISK_API_KEY}
     volumes:
-      - ./collections.db:/app/collections.db
+      - db_data:/app/data
     restart: unless-stopped
+
+volumes:
+  db_data:
