@@ -1,15 +1,29 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
+
+class Country(BaseModel):
+    name: str
+
+
+class Genre(BaseModel):
+    name: str
+
+
 class Film(BaseModel):
     id: int
-    name: str
-    description: str
-    posterUrl: str
+    name: Optional[str] = None
+    alternativeName: Optional[str] = None
     year: Optional[int] = None
-    genre: Optional[str] = None
-    rating: Optional[float] = None
+    description: Optional[str] = None
+    rating: Optional[dict] = None
+    poster: Optional[dict] = None
+    countries: Optional[List[Country]] = None
+    genres: Optional[List[Genre]] = None
+    movieLength: Optional[int] = None
+    ageRating: Optional[int] = None
 
-class UserCollection(BaseModel):
-    user_id: str
+
+class RandomFilmsResponse(BaseModel):
     films: List[Film]
+    count: int

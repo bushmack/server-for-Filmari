@@ -1,108 +1,173 @@
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel
-from typing import List, Optional
-from models import Film, UserCollection
-from database import init_db, add_film_to_collection, get_user_collections
-import logging
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import requests
+import random
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+app = FastAPI()
 
-from kinopoisk_api import (
-    get_random_series,
-    get_random_movie,
-    search_by_genre_and_year,
-    search_by_title,
-    search_by_actor
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-app = FastAPI(title="Full Film API Server")
-init_db()
+TOKEN = "859EJFM-R0HMPJK-Q038VE6-QMXJVWP"
+HEADERS = {"X-API-KEY": TOKEN}
+
+
+# ========== СЛУЧАЙНЫЕ ФИЛЬМЫ ==========
+@app.get("/api/random-movie")
+async def random_movies():
+    try:
+        print("\n=== ПОИСК ФИЛЬМОВ ===")
+        all_movies = []
+
+        # Собираем с 5 страниц
+        for page in range(1, 6):
+            response = requests.get(
+                "https://api.kinopoisk.dev/v1.4/movie",
+                headers=HEADERS,
+                params={
+                    "page": page,
+                    "limit": 50,
+                    "type": "movie"
+                },
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                movies = data.get("docs", [])
+                print(f"Страница {page}: получили {len(movies)} фильмов")
+
+                # ТОЛЬКО ДВЕ ПРОВЕРКИ: постер и описание
+                for m in movies:
+                    if (m.get("poster") and m["poster"].get("url") and
+                        m.get("description")):
+                        all_movies.append(m)
+            else:
+                print(f"Ошибка API: {response.status_code}")
+
+        print(f"Всего фильмов с постером и описанием: {len(all_movies)}")
+
+        if not all_movies:
+            print("НЕТ ПОДХОДЯЩИХ ФИЛЬМОВ!")
+            return JSONResponse(content=[])
+
+        # Перемешиваем
+        random.shuffle(all_movies)
+
+        # Берем первые 5
+        result = []
+        for m in all_movies[:5]:
+            # Название
+            name = m.get("name") or m.get("alternativeName") or "Без названия"
+
+            # Описание (точно есть)
+            description = m["description"]
+
+            # Постер (точно есть)
+            poster = m["poster"]["url"]
+
+            # Жанр
+            genre = ""
+            if m.get("genres") and len(m["genres"]) > 0:
+                genre = m["genres"][0].get("name", "")
+
+            # Год
+            year = m.get("year")
+
+            # Рейтинг (пофиг какой)
+            rating = 0.0
+            if m.get("rating"):
+                rating = m["rating"].get("kp") or m["rating"].get("imdb") or 0.0
+
+            movie_data = {
+                "Id": int(m.get("id", 0)),
+                "Name": name,
+                "Description": description,
+                "PosterUrl": poster,
+                "Year": year,
+                "Genre": genre,
+                "Rating": round(float(rating), 1) if rating else 0
+            }
+
+            print(f"ДОБАВЛЕН: {name}")
+            result.append(movie_data)
+
+        print(f"ИТОГО: {len(result)} фильмов")
+        return JSONResponse(content=result)
+
+    except Exception as e:
+        print(f"ОШИБКА: {e}")
+        return JSONResponse(content=[])
+
+
+# ========== СЛУЧАЙНЫЕ СЕРИАЛЫ ==========
+@app.get("/api/random-series")
+async def random_series():
+    try:
+        print("\n=== ПОИСК СЕРИАЛОВ ===")
+        all_series = []
+
+        for page in range(1, 4):
+            response = requests.get(
+                "https://api.kinopoisk.dev/v1.4/movie",
+                headers=HEADERS,
+                params={
+                    "page": page,
+                    "limit": 50,
+                    "type": "tv-series",
+                    "selectFields": ["id", "name", "description", "shortDescription",
+                                     "year", "rating", "poster", "genres"],
+                    "notNullFields": ["name", "poster.url", "description", "rating.kp"]
+                },
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                series = data.get("docs", [])
+
+                for s in series:
+                    if (s.get("poster") and s["poster"].get("url") and
+                            s.get("description") and
+                            s.get("rating") and s["rating"].get("kp", 0) > 0):
+                        all_series.append(s)
+
+        if not all_series:
+            return JSONResponse(content=[])
+
+        random.shuffle(all_series)
+
+        result = []
+        for s in all_series[:5]:
+            rating = s["rating"]["kp"]
+            result.append({
+                "Id": int(s["id"]),
+                "Name": s.get("name") or s.get("alternativeName", "Без названия"),
+                "Description": s["description"],
+                "PosterUrl": s["poster"]["url"],
+                "Year": s.get("year"),
+                "Genre": s.get("genres", [{}])[0].get("name", "") if s.get("genres") else "",
+                "Rating": round(float(rating), 1)
+            })
+
+        return JSONResponse(content=result)
+
+    except Exception as e:
+        print(f"Ошибка: {e}")
+        return JSONResponse(content=[])
+
 
 @app.get("/")
 async def root():
-    logger.info("Запрос к корню сервера")
-    return {"message": "Film API Server", "status": "running"}
+    return {"message": "Kinopoisk API работает"}
 
-@app.get("/api/random-series", response_model=List[Film])
-async def api_get_random_series():
-    logger.info("Получен запрос на получение случайных сериалов")
-    try:
-        result = get_random_series()
-        logger.info(f"Отправлено {len(result)} сериалов")
-        return result
-    except Exception as e:
-        logger.error(f"Ошибка в api_get_random_series: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/random-movie", response_model=List[Film])
-async def api_get_random_movie():
-    logger.info("Получен запрос на получение случайных фильмов")
-    try:
-        result = get_random_movie()
-        logger.info(f"Отправлено {len(result)} фильмов")
-        return result
-    except Exception as e:
-        logger.error(f"Ошибка в api_get_random_movie: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/search-by-genre-year", response_model=List[Film])
-async def api_search_by_genre_year(genre: str, year: int):
-    logger.info(f"Получен запрос на поиск по жанру '{genre}' и году '{year}'")
-    try:
-        result = search_by_genre_and_year(genre, year)
-        logger.info(f"Отправлено {len(result)} фильмов по жанру и году")
-        return result
-    except Exception as e:
-        logger.error(f"Ошибка в api_search_by_genre_year: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/search-by-title", response_model=List[Film])
-async def api_search_by_title(title: str = Query(..., min_length=1)):
-    logger.info(f"Получен запрос на поиск по названию: '{title}'")
-    try:
-        result = search_by_title(title)
-        logger.info(f"Отправлено {len(result)} фильмов по названию")
-        return result
-    except Exception as e:
-        logger.error(f"Ошибка в api_search_by_title: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/search-by-actor", response_model=List[Film])
-async def api_search_by_actor(actor: str = Query(..., min_length=1)):
-    logger.info(f"Получен запрос на поиск по актёру: '{actor}'")
-    try:
-        result = search_by_actor(actor)
-        logger.info(f"Отправлено {len(result)} фильмов по актёру")
-        return result
-    except Exception as e:
-        logger.error(f"Ошибка в api_search_by_actor: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/add-to-collection")
-async def api_add_to_collection(user_id: str, film_id: int):
-    logger.info(f"Получен запрос на добавление фильма {film_id} пользователю {user_id}")
-    try:
-        add_film_to_collection(user_id, film_id)
-        logger.info(f"Фильм {film_id} успешно добавлен пользователю {user_id}")
-        return {"message": "Фильм добавлен в подборку"}
-    except Exception as e:
-        logger.error(f"Ошибка в api_add_to_collection: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/user-collections/{user_id}", response_model=List[int])
-async def api_get_user_collections_endpoint(user_id: str):
-    logger.info(f"Получен запрос на получение подборки пользователя {user_id}")
-    try:
-        result = get_user_collections(user_id)
-        logger.info(f"Отправлено {len(result)} фильмов из подборки пользователя {user_id}")
-        return result
-    except Exception as e:
-        logger.error(f"Ошибка в api_get_user_collections_endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Исправленное условие
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
