@@ -3,7 +3,7 @@ import requests
 # Твой API токен
 API_TOKEN = "WE5F7TA-CBS4MEF-MBENDVR-Z31P1H5"
 HEADERS = {"X-API-KEY": API_TOKEN}
-BASE_URL = "https://api.kinopoisk.dev/v1.4"
+BASE_URL = "https://api.poiskkino.dev/v1.4"
 
 
 def find_actor_movies():
@@ -23,36 +23,28 @@ def find_actor_movies():
     print(f"\n🔍 Ищем: {name}")
 
     # ПРОСТОЙ ЗАПРОС - ищем по имени
-    url = f"{BASE_URL}/person"
+    url = f"{BASE_URL}/person/search?page=1&limit=20&query={name}"
     params = {
-        "search": name,  # Простой поиск по строке
+        "query": name,
+        "page":1,
         "limit": 20
     }
 
     try:
-        response = requests.get(url, headers=HEADERS, params=params)
-
+        print(url,HEADERS,params)
+        response = requests.get(url, headers=HEADERS)
+        print(response.json())
         if response.status_code != 200:
             print(f"❌ Ошибка {response.status_code}")
             return
 
         data = response.json()
-        persons = data.get('docs', [])
+        actors = data.get('docs', [])
 
-        if not persons:
+        if not actors:
             print("❌ Никого не нашли")
             return
 
-        # Фильтруем только актеров
-        actors = []
-        for p in persons:
-            professions = p.get('profession', [])
-            if 'актер' in professions or 'actor' in professions:
-                actors.append(p)
-
-        if not actors:
-            print("❌ Актеров с таким именем нет")
-            return
 
         # Если нашли несколько актеров
         if len(actors) > 1:

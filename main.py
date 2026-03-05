@@ -311,6 +311,9 @@ class KinopoiskAPI:
             }
 
             data = await self._make_request("/movie", params)
+            print()
+
+            print(data)
             movies = data.get("docs", [])
 
             if not movies:
