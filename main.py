@@ -79,13 +79,13 @@ class KinopoiskAPI:
             return {"docs": []}
 
     def _convert_to_wpf_format(self, movie: dict) -> dict:
-        """Конвертирует фильм в формат WPF"""
-        # Жанры
+        """Конвертирует фильм в формат WPF со всеми жанрами"""
+        # ВСЕ жанры
         genres = []
         if movie.get("genres"):
             genres = [g.get("name", "") for g in movie["genres"] if g.get("name")]
 
-        # Первый жанр для поля Genre
+        # Первый жанр для поля Genre (для обратной совместимости)
         genre = genres[0] if genres else ""
 
         # Рейтинг
@@ -149,8 +149,9 @@ class KinopoiskAPI:
             "Description": movie.get("description") or movie.get("shortDescription") or "Описание отсутствует",
             "PosterUrl": poster_url,
             "Year": movie.get("year"),
-            "Genre": genre,
-            "AllGenres": genres,
+            "Genre": genre,  # Первый жанр (для обратной совместимости)
+            "AllGenres": genres,  # ВСЕ жанры
+            "GenresString": ", ".join(genres),  # Строка со всеми жанрами
             "Rating": round(rating, 1) if rating else None,
             "Type": movie.get("type", "movie"),
             "Actors": actors[:10],
@@ -163,16 +164,17 @@ class KinopoiskAPI:
             "SeasonsText": seasons_text,
             "AlternativeName": movie.get("alternativeName", ""),
             "ShortDescription": movie.get("shortDescription", ""),
-            "Votes": movie.get("votes", {}).get("kp", 0) if movie.get("votes") else 0
+            "Votes": movie.get("votes", {}).get("kp", 0) if movie.get("votes") else 0,
+            "HasPoster": bool(poster_url),
+            "HasDescription": bool(movie.get("description"))
         }
 
     # ========== СЛУЧАЙНЫЕ ФИЛЬМЫ (БЕЗ КЭША) ==========
 
     async def get_random_movies(self, count: int = 5) -> List[dict]:
         """Получение случайных фильмов - КАЖДЫЙ РАЗ НОВЫЙ ПОИСК"""
-
         all_movies = []
-        page = random.randint(1, 5)  # Случайная страница
+        page = random.randint(1, 5)
 
         print(f"Поиск {count} случайных фильмов на странице {page}...")
 
@@ -186,14 +188,12 @@ class KinopoiskAPI:
         data = await self._make_request("/movie", params)
         movies = data.get("docs", [])
 
-        # Фильтруем подходящие
         for movie in movies:
             if (movie.get("poster") and movie["poster"].get("url") and
                     movie.get("description") and len(movie["description"]) > 10 and
                     movie.get("rating") and movie["rating"].get("kp", 0) > 0):
                 all_movies.append(movie)
 
-        # Если мало, добавим со следующей страницы
         if len(all_movies) < count:
             params["page"] = page + 1
             data = await self._make_request("/movie", params)
@@ -232,9 +232,8 @@ class KinopoiskAPI:
 
     async def get_random_series(self, count: int = 5) -> List[dict]:
         """Получение случайных сериалов - КАЖДЫЙ РАЗ НОВЫЙ ПОИСК"""
-
         all_series = []
-        page = random.randint(1, 5)  # Случайная страница
+        page = random.randint(1, 5)
 
         print(f"Поиск {count} случайных сериалов на странице {page}...")
 
@@ -248,14 +247,12 @@ class KinopoiskAPI:
         data = await self._make_request("/movie", params)
         series = data.get("docs", [])
 
-        # Фильтруем подходящие
         for s in series:
             if (s.get("poster") and s["poster"].get("url") and
                     s.get("description") and len(s["description"]) > 10 and
                     s.get("rating") and s["rating"].get("kp", 0) > 0):
                 all_series.append(s)
 
-        # Если мало, добавим со следующей страницы
         if len(all_series) < count:
             params["page"] = page + 1
             data = await self._make_request("/movie", params)
@@ -309,7 +306,8 @@ class KinopoiskAPI:
             params = {
                 "page": page,
                 "limit": 100,
-                "persons.name": actor_name
+                "persons.name": actor_name,
+                "notNullFields": ["poster.url", "description"]
             }
 
             data = await self._make_request("/movie", params)
@@ -326,7 +324,6 @@ class KinopoiskAPI:
             page += 1
             await asyncio.sleep(0.1)
 
-        # Удаляем дубликаты
         seen_ids = set()
         unique_movies = []
         for movie in all_movies:
@@ -341,7 +338,63 @@ class KinopoiskAPI:
         self.search_cache.set(cache_key, result[:limit])
         return result[:limit]
 
-    # ========== ПОИСК ПО ФИЛЬТРУ ==========
+    # ========== ПОИСК ПО НАЗВАНИЮ ==========
+
+    async def search_by_name(self, query: str, limit: int = 20) -> List[dict]:
+        """Поиск фильмов по названию"""
+        cache_key = f"name_{query}_{limit}"
+
+        cached = self.search_cache.get(cache_key)
+        if cached:
+            return cached
+
+        print(f"\n🔍 Поиск по названию: '{query}'")
+
+        if len(query) < 2:
+            return []
+
+        params = {
+            "page": 1,
+            "limit": limit,
+            "query": query,
+            "selectFields": ["id", "name", "description", "year", "rating",
+                             "poster", "genres", "countries", "movieLength",
+                             "type", "ageRating", "alternativeName"],
+            "notNullFields": ["poster.url", "description"]
+        }
+
+        data = await self._make_request("/movie/search", params)
+
+        if not data or not data.get('docs'):
+            print(f"  Ничего не найдено для '{query}'")
+            return []
+
+        content_list = data.get('docs', [])
+        print(f"  Найдено фильмов в ответе: {len(content_list)}")
+
+        matching_content = []
+        query_lower = query.lower().strip()
+
+        for content in content_list:
+            if content.get('id') and content.get('name'):
+                content_title = content.get('name', '').lower().strip()
+                if content_title == query_lower or query_lower in content_title:
+                    matching_content.append(content)
+
+        matching_content = matching_content[:limit]
+
+        print(f"  После фильтрации: {len(matching_content)} фильмов")
+
+        if not matching_content:
+            return []
+
+        result = [self._convert_to_wpf_format(m) for m in matching_content]
+        print(f"  Возвращаем {len(result)} фильмов")
+
+        self.search_cache.set(cache_key, result)
+        return result
+
+    # ========== ПОИСК ПО ФИЛЬТРУ (с фильтрацией постера и описания) ==========
 
     async def search_by_filter(
             self,
@@ -353,7 +406,7 @@ class KinopoiskAPI:
             country: Optional[str] = None,
             limit: int = 100
     ) -> List[dict]:
-        """Поиск фильмов по фильтру"""
+        """Поиск фильмов по фильтру (только с постерами и описанием)"""
         cache_key = f"filter_{genre}_{year_from}_{year_to}_{rating_from}_{rating_to}_{country}_{limit}"
 
         cached = self.search_cache.get(cache_key)
@@ -362,7 +415,8 @@ class KinopoiskAPI:
 
         params = {
             "page": 1,
-            "limit": 100
+            "limit": limit * 2,
+            "notNullFields": ["poster.url", "description"]
         }
 
         if genre:
@@ -370,9 +424,17 @@ class KinopoiskAPI:
 
         if year_from and year_to:
             params["year"] = f"{year_from}-{year_to}"
+        elif year_from:
+            params["year"] = f"{year_from}-2025"
+        elif year_to:
+            params["year"] = f"1900-{year_to}"
 
         if rating_from and rating_to:
             params["rating.kp"] = f"{rating_from}-{rating_to}"
+        elif rating_from:
+            params["rating.kp"] = f"{rating_from}-10"
+        elif rating_to:
+            params["rating.kp"] = f"0-{rating_to}"
 
         if country:
             params["countries.name"] = country
@@ -380,12 +442,19 @@ class KinopoiskAPI:
         data = await self._make_request("/movie", params)
         movies = data.get("docs", [])
 
-        result = [self._convert_to_wpf_format(m) for m in movies]
+        # Дополнительная фильтрация
+        valid_movies = []
+        for movie in movies:
+            if (movie.get("poster") and movie["poster"].get("url") and
+                    movie.get("description") and len(movie["description"]) > 20):
+                valid_movies.append(movie)
+
+        result = [self._convert_to_wpf_format(m) for m in valid_movies[:limit]]
         result.sort(key=lambda x: x.get("Rating", 0) or 0, reverse=True)
 
-        print(f"По фильтру найдено {len(result)} фильмов")
-        self.search_cache.set(cache_key, result[:limit])
-        return result[:limit]
+        print(f"По фильтру найдено {len(result)} фильмов с постерами и описанием")
+        self.search_cache.set(cache_key, result)
+        return result
 
     # ========== ПОЛУЧЕНИЕ ФИЛЬМА ПО ID ==========
 
@@ -478,15 +547,29 @@ async def search_by_actor(
         return []
 
 
+@app.get("/api/search/name")
+async def search_by_name(
+        query: str = Query(..., description="Название фильма"),
+        limit: int = Query(20, description="Количество результатов")
+):
+    try:
+        movies = await kinopoisk_api.search_by_name(query, limit)
+        print(f"GET /api/search/name: найдено {len(movies)} фильмов по запросу '{query}'")
+        return movies
+    except Exception as e:
+        print(f"Ошибка: {e}")
+        return []
+
+
 @app.get("/api/search/filter")
 async def search_by_filter(
-        genre: Optional[str] = Query(None),
-        year_from: Optional[int] = Query(None),
-        year_to: Optional[int] = Query(None),
-        rating_from: Optional[float] = Query(None),
-        rating_to: Optional[float] = Query(None),
-        country: Optional[str] = Query(None),
-        limit: int = Query(100)
+        genre: Optional[str] = Query(None, description="Жанр"),
+        year_from: Optional[int] = Query(None, description="Год с"),
+        year_to: Optional[int] = Query(None, description="Год по"),
+        rating_from: Optional[float] = Query(None, description="Рейтинг от"),
+        rating_to: Optional[float] = Query(None, description="Рейтинг до"),
+        country: Optional[str] = Query(None, description="Страна"),
+        limit: int = Query(100, description="Количество результатов")
 ):
     try:
         movies = await kinopoisk_api.search_by_filter(
