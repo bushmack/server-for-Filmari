@@ -287,60 +287,101 @@ class KinopoiskAPI:
         print(f"Найдено {len(all_series)} сериалов, возвращаем {len(result)}")
         return result
 
-    # ========== ПОИСК ПО АКТЕРУ ==========
+    # ========== ПОИСК ПО АКТЕРУ (НОВЫЙ, РАБОЧИЙ) ==========
+
+    # ========== ПОИСК ПО АКТЕРУ (ИСПРАВЛЕННЫЙ) ==========
 
     async def search_by_actor(self, actor_name: str, limit: int = 100) -> List[dict]:
-        """Поиск всех фильмов по актеру"""
-        cache_key = f"actor_{actor_name}_{limit}"
+        """
+        Поиск всех фильмов по актеру
+        Исправлена проблема с кэшированием
+        """
+        # Убираем кэширование для этого метода или делаем его более надежным
+        # cache_key = f"actor_{actor_name}_{limit}"
+        # cached = self.search_cache.get(cache_key)
+        # if cached:
+        #     print(f"Из кэша: {len(cached)} фильмов с {actor_name}")
+        #     return cached
 
-        cached = self.search_cache.get(cache_key)
-        if cached:
-            return cached
+        print(f"\n🔍 Поиск актера: '{actor_name}'")
 
-        all_movies = []
-        page = 1
-
-        print(f"Поиск фильмов с актером: {actor_name}")
-
-        while page <= 10:
-            params = {
-                "page": page,
-                "limit": 100,
-                "persons.name": actor_name,
-                "notNullFields": ["poster.url", "description"]
+        try:
+            # ШАГ 1: Ищем актера по имени через person/search
+            search_params = {
+                "query": actor_name,
+                "page": 1,
+                "limit": 20
             }
 
-            data = await self._make_request("/movie", params)
-            print()
+            print(f"Ищем ID актера...")
+            response = await self._make_request("/person/search", search_params)
+            persons = response.get("docs", [])
 
-            print(data)
-            movies = data.get("docs", [])
+            if not persons:
+                print(f"❌ Актер '{actor_name}' не найден")
+                return []
 
-            if not movies:
-                break
+            # Выбираем первого подходящего актера
+            selected_actor = persons[0]
+            actor_id = selected_actor.get("id")
+            actor_real_name = selected_actor.get("name") or selected_actor.get("enName", actor_name)
 
-            for movie in movies:
-                if movie.get("poster") and movie["poster"].get("url"):
-                    all_movies.append(movie)
+            print(f"✅ Найден актер: {actor_real_name} (ID: {actor_id})")
 
-            print(f"Страница {page}: найдено {len(movies)} фильмов")
-            page += 1
-            await asyncio.sleep(0.1)
+            # ШАГ 2: Ищем все фильмы с этим актером
+            print(f"🔎 Ищем фильмы с участием {actor_real_name}...")
 
-        seen_ids = set()
-        unique_movies = []
-        for movie in all_movies:
-            if movie["id"] not in seen_ids:
-                seen_ids.add(movie["id"])
-                unique_movies.append(movie)
+            all_movies = []
+            page = 1
+            max_pages = 5  # Максимум 5 страниц (по 250 фильмов = до 1250 фильмов)
 
-        result = [self._convert_to_wpf_format(m) for m in unique_movies]
-        result.sort(key=lambda x: x.get("Rating", 0) or 0, reverse=True)
+            while page <= max_pages:
+                movie_params = {
+                    "page": page,
+                    "limit": 250,
+                    "persons.id": actor_id,
+                    "selectFields": ["id", "name", "description", "year", "rating",
+                                     "poster", "genres", "countries", "persons", "movieLength",
+                                     "type", "ageRating", "votes", "alternativeName", "shortDescription"],
+                    "notNullFields": ["poster.url", "description"]
+                }
 
-        print(f"Найдено уникальных фильмов: {len(result)}")
-        self.search_cache.set(cache_key, result[:limit])
-        return result[:limit]
+                movies_data = await self._make_request("/movie", movie_params)
+                movies = movies_data.get("docs", [])
 
+                if not movies:
+                    break
+
+                all_movies.extend(movies)
+                print(f"  Страница {page}: +{len(movies)} фильмов")
+
+                if len(movies) < 250:
+                    break
+
+                page += 1
+                await asyncio.sleep(0.1)
+
+            if not all_movies:
+                print(f"❌ У актера {actor_real_name} нет фильмов в базе")
+                return []
+
+            print(f"✅ Найдено всего фильмов: {len(all_movies)}")
+
+            # Сортируем по году (новые сверху)
+            all_movies.sort(key=lambda x: x.get("year", 0) or 0, reverse=True)
+
+            # Конвертируем в WPF формат
+            result = [self._convert_to_wpf_format(m) for m in all_movies[:limit]]
+
+            # Сохраняем в кэш (опционально, можно оставить для производительности)
+            # self.search_cache.set(cache_key, result)
+
+            print(f"📊 Возвращаем {len(result)} фильмов для {actor_real_name}")
+            return result
+
+        except Exception as e:
+            print(f"❌ Ошибка при поиске актера: {e}")
+            return []
     # ========== ПОИСК ПО НАЗВАНИЮ ==========
 
     async def search_by_name(self, query: str, limit: int = 20) -> List[dict]:
@@ -397,7 +438,7 @@ class KinopoiskAPI:
         self.search_cache.set(cache_key, result)
         return result
 
-    # ========== ПОИСК ПО ФИЛЬТРУ (с фильтрацией постера и описания) ==========
+    # ========== ПОИСК ПО ФИЛЬТРУ ==========
 
     async def search_by_filter(
             self,
@@ -409,7 +450,7 @@ class KinopoiskAPI:
             country: Optional[str] = None,
             limit: int = 100
     ) -> List[dict]:
-        """Поиск фильмов по фильтру (только с постерами и описанием)"""
+        """Поиск фильмов по фильтру"""
         cache_key = f"filter_{genre}_{year_from}_{year_to}_{rating_from}_{rating_to}_{country}_{limit}"
 
         cached = self.search_cache.get(cache_key)
@@ -504,7 +545,7 @@ class KinopoiskAPI:
 
 
 # Инициализация API
-kinopoisk_api = KinopoiskAPI(os.getenv("KINOPOISK_API_TOKEN", "CHHSWYQ-MGZ413R-K8A2STZ-RH7AD6R"))
+kinopoisk_api = KinopoiskAPI(os.getenv("KINOPOISK_API_TOKEN", "WE5F7TA-CBS4MEF-MBENDVR-Z31P1H5"))
 
 
 # ===== ЭНДПОИНТЫ =====
